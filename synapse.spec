@@ -35,7 +35,7 @@ use of the Zeitgeist engine.
 
 %package devel
 Summary:	Development files for %{name}
-Group:		Development/Libraries
+Group:		Development/Other
 Requires:	%{name} = %{version}-%{release}
 
 %description devel
