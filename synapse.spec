@@ -3,7 +3,7 @@ Version:	0.2.10
 Release:	1
 Summary:	A semantic launcher written in Vala
 
-Group:		Applications/Productivity
+Group:		System/Libraries
 License:	GPLv3+
 URL:		http://synapse.zeitgeist-project.com/wiki/index.php?title=Main_Page
 Source0:	http://launchpad.net/%{name}-project/0.2/%{version}/+download/%{name}-%{version}.tar.gz
@@ -19,12 +19,12 @@ Patch1:		%{name}-0.2.10-libm-dso-for-powf.patch
 BuildRequires:	gettext
 BuildRequires:	gtk2-devel
 BuildRequires:	intltool
-#BuildRequires:	json-glib-devel
-BuildRequires:	libgee06-devel
-BuildRequires:	libgtkhotkey-devel
+BuildRequires:	json-glib-devel
+BuildRequires:	pkgconfig(gee-1.0)
+BuildRequires:	pkgconfig(gtkhotkey-1.0)
 BuildRequires:	libnotify-devel
 BuildRequires:	pkgconfig(zeitgeist-1.0)
-#BuildRequires:	rest-devel
+BuildRequires:	rest-devel
 BuildRequires:	unique-devel
 BuildRequires:	vala
 
