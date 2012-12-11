@@ -19,10 +19,10 @@ Patch1:		%{name}-0.2.10-libm-dso-for-powf.patch
 BuildRequires:	gettext
 BuildRequires:	gtk2-devel
 BuildRequires:	intltool
-BuildRequires:	json-glib-devel
+BuildRequires:	libnotify-devel
 BuildRequires:	pkgconfig(gee-1.0)
 BuildRequires:	pkgconfig(gtkhotkey-1.0)
-BuildRequires:	libnotify-devel
+BuildRequires:	pkgconfig(json-glib-1.0)
 BuildRequires:	pkgconfig(zeitgeist-1.0)
 BuildRequires:	rest-devel
 BuildRequires:	unique-devel
@@ -70,3 +70,15 @@ install -D -p -m 644 vapi/*.vapi %{buildroot}%{_datadir}/vala/vapi
 %doc AUTHORS
 %{_datadir}/vala/vapi
 
+
+
+%changelog
+* Thu Jun 21 2012 Andrey Bondrov <abondrov@mandriva.org> 0.2.10-1
++ Revision: 806651
+- Fix group
+- Update BuildReqeuires
+- imported package synapse
+
+
+* Thu Jun 21 2012 Andrey Bondrov <andrey.bondrov@rosalab.ru> 0.2.10-1
+- Import Fedora package and convert spec to Mandriva style
