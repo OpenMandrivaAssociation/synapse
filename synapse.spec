@@ -1,7 +1,7 @@
 Summary:	A semantic launcher written in Vala
 Name:		synapse
 Version:	0.2.10
-Release:	1
+Release:	2
 Group:		System/Libraries
 License:	GPLv3+
 URL:		http://synapse.zeitgeist-project.com/wiki/index.php?title=Main_Page
