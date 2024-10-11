@@ -1,2 +1,3 @@
 sources:
-  "synapse-0.2.10.tar.gz": 6e8a800bdbdded4e167734c8e49d95a9e44998ff
+  synapse-1.116.0.tar.gz: a6d75163ca57a723ac9f39486b7cbaf5d6212cac
+  rust-vendor.tar.xz: 08efabf7ca5ab98a84ec4fff7eab839590690320

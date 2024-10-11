@@ -1,79 +1,57 @@
-Summary:	A semantic launcher written in Vala
+%undefine _debugsource_packages
+
 Name:		synapse
-Version:	0.2.10
-Release:	2
-Group:		System/Libraries
-License:	GPLv3+
-URL:		http://synapse.zeitgeist-project.com/wiki/index.php?title=Main_Page
-Source0:	http://launchpad.net/%{name}-project/0.2/%{version}/+download/%{name}-%{version}.tar.gz
-# the generated synapse-main.c imports gtkhotkey-1.0/gtkhotkey.h,
-# which imports glib-2.0/glib/gquark.h, and this is no longer allowed
-# pass -DGLIB_COMPILATION to override (h/t: Mamoru Tasaka)
-# https://bugs.launchpad.net/synapse-project/+bug/995354
-Patch0:		%{name}-0.2.10-glib.patch
-# libsynapsecore.a uses powf (defined in the libm DSO),
-# it should be linked with -lm
-# https://bugs.launchpad.net/synapse-project/+bug/995356
-Patch1:		%{name}-0.2.10-libm-dso-for-powf.patch
-Patch2:		concrete-gtk-timeout.patch
-BuildRequires:	gettext
-BuildRequires:	intltool
-BuildRequires:	vala
-BuildRequires:	pkgconfig(gee-1.0)
-BuildRequires:	pkgconfig(gtk+-2.0)
-BuildRequires:	pkgconfig(gtkhotkey-1.0)
-BuildRequires:	pkgconfig(json-glib-1.0)
-BuildRequires:	pkgconfig(libnotify)
-BuildRequires:	pkgconfig(rest-0.7)
-BuildRequires:	pkgconfig(unique-1.0)
-BuildRequires:	pkgconfig(zeitgeist-1.0)
+Version:	1.116.0
+Release:	1
+Source0:	https://github.com/element-hq/synapse/archive/v%{version}/synapse-%{version}.tar.gz
+Source1:	rust-vendor.tar.xz
+Summary:	Server ("homeserver") for the Matrix instant messaging and VoIP system
+URL:		https://pypi.org/project/synapse/
+License:	AGPL-3.0+
+Group:		Servers
+BuildRequires:	python%{pyver}dist(pip)
+BuildRequires:	rust
 
 %description
-Synapse is a semantic launcher written in Vala that you can use to start
-applications as well as find and access relevant documents and files by making
-use of the Zeitgeist engine.
-
-%files -f %{name}.lang
-%doc COPYING README
-%{_bindir}/synapse
-%{_mandir}/man1/synapse.1*
-%{_datadir}/applications/synapse.desktop
-%{_datadir}/icons/hicolor/scalable/apps/synapse.svg
-
-#----------------------------------------------------------------------------
-
-%package devel
-Summary:	Development files for %{name}
-Group:		Development/Other
-Requires:	%{name} = %{EVRD}
-
-%description devel
-The %{name}-devel package contains libraries and header files for
-developing applications that use %{name}.
-
-%files devel
-%doc AUTHORS
-%{_datadir}/vala/vapi
-
-#----------------------------------------------------------------------------
+Server ("homeserver") for the Matrix instant messaging and VoIP system
 
 %prep
-%setup -q
-%patch0 -p1 -b .glib
-%patch1 -p1 -b .libm-dso-for-powf
-%patch2 -p1
+%autosetup -p1 -n synapse-%{version} -a 1
+mkdir .cargo
+cat >>.cargo/config.toml <<EOF
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+EOF
+
 
 %build
-%configure2_5x \
-	--disable-static \
-	--enable-zeitgeist=yes
-%make V=1
+%py_build
 
 %install
-%makeinstall_std
-install -d -p -m 755 %{buildroot}%{_datadir}/vala/vapi
-install -D -p -m 644 vapi/*.vapi %{buildroot}%{_datadir}/vala/vapi
+%py_install
 
-# language files
-%find_lang %{name}
+mkdir -p %{buildroot}%{_sysusersdir}
+cat >%{buildroot}%{_sysusersdir}/synapse.conf <<'EOF'
+u	synapse	-	"The Synapse Matrix homeserver"	/run/synapse	%{_bindir}/nologin
+EOF
 
+%files
+%{_bindir}/export_signing_key
+%{_bindir}/generate_config
+%{_bindir}/generate_log_config
+%{_bindir}/generate_signing_key
+%{_bindir}/hash_password
+%{_bindir}/register_new_matrix_user
+%{_bindir}/synapse_homeserver
+%{_bindir}/synapse_port_db
+%{_bindir}/synapse_review_recent_signups
+%{_bindir}/synapse_worker
+%{_bindir}/synctl
+%{_bindir}/update_synapse_database
+%{python_sitearch}/synapse
+%{python_sitearch}/matrix_synapse-*.dist-info
+%{_sysusersdir}/synapse.conf
