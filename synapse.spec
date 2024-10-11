@@ -11,6 +11,7 @@ License:	AGPL-3.0+
 Group:		Servers
 BuildRequires:	python%{pyver}dist(pip)
 BuildRequires:	python%{pyver}dist(poetry)
+BuildRequires:	python%{pyver}dist(setuptools-rust)
 BuildRequires:	rust
 
 %description
