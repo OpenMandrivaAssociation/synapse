@@ -2,7 +2,7 @@
 
 Name:		synapse
 Version:	1.116.0
-Release:	1
+Release:	2
 Source0:	https://github.com/element-hq/synapse/archive/v%{version}/synapse-%{version}.tar.gz
 Source1:	rust-vendor.tar.xz
 Source2:	https://src.fedoraproject.org/rpms/matrix-synapse/raw/rawhide/f/synapse.sysconfig
