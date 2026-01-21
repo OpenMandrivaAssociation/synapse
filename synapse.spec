@@ -1,17 +1,18 @@
 %undefine _debugsource_packages
 
 Name:		synapse
-Version:	1.116.0
-Release:	2
+Version:	1.145.0
+Release:	1
 Source0:	https://github.com/element-hq/synapse/archive/v%{version}/synapse-%{version}.tar.gz
 Source1:	rust-vendor.tar.xz
 Source2:	https://src.fedoraproject.org/rpms/matrix-synapse/raw/rawhide/f/synapse.sysconfig
 Source3:	https://src.fedoraproject.org/rpms/matrix-synapse/raw/rawhide/f/synapse.service
 Source4:	homeserver.yaml
 Summary:	Server ("homeserver") for the Matrix instant messaging and VoIP system
-URL:		https://pypi.org/project/synapse/
+URL:		https://github.com/element-hq/synapse
 License:	AGPL-3.0+
 Group:		Servers
+BuildSystem:	python
 BuildRequires:	python%{pyver}dist(pip)
 BuildRequires:	python%{pyver}dist(poetry)
 BuildRequires:	python%{pyver}dist(setuptools-rust)
@@ -25,8 +26,9 @@ https://src.fedoraproject.org/rpms/matrix-synapse/raw/rawhide/f/0001-pyo3-Disabl
 %description
 Server ("homeserver") for the Matrix instant messaging and VoIP system
 
-%prep
-%autosetup -p1 -n synapse-%{version} -a 1
+%prep -a
+tar xf %{S:1}
+
 mkdir .cargo
 cat >>.cargo/config.toml <<EOF
 
@@ -37,13 +39,7 @@ replace-with = "vendored-sources"
 directory = "vendor"
 EOF
 
-
-%build
-%py_build
-
-%install
-%py_install
-
+%install -a
 install -p -D -T -m 0644 contrib/systemd/log_config.yaml %{buildroot}%{_sysconfdir}/synapse/log_config.yaml
 install -p -D -T -m 0644 %{S:2} %{buildroot}%{_sysconfdir}/sysconfig/synapse
 install -p -D -T -m 0644 %{S:3} %{buildroot}%{_unitdir}/synapse.service
