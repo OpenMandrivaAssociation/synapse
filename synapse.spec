@@ -16,6 +16,7 @@ BuildSystem:	python
 BuildRequires:	python%{pyver}dist(pip)
 BuildRequires:	python%{pyver}dist(poetry)
 BuildRequires:	python%{pyver}dist(setuptools-rust)
+BuildRequires:	python%{pyver}dist(maturin)
 BuildRequires:	rust
 #Requires:	python%{pyver}dist(psycopg2)
 #Requires(post): postgresql-server
