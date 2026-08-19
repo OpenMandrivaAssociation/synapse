@@ -1,3 +1,42 @@
+# Synapse homeserver — first-start / setup settings.
+# /usr/libexec/synapse-setup reads this file before the daemon starts.
+# Changing these after the first successful start has no effect on an
+# already-generated homeserver.yaml; edit that file (or remove the
+# "managed-by: synapse-setup" marker from conf.d/database.yaml) instead.
+
+# Public server name (the domain after the colon in @user:YOUR.DOMAIN).
+# Required on first start. Cannot be changed later without a new homeserver.
+# Documentation placeholder domains are rejected by synapse-setup.
+#SYNAPSE_SERVER_NAME=matrix.YOUR.DOMAIN
+
+# Report anonymised usage statistics to matrix.org?  yes or no
+SYNAPSE_REPORT_STATS=no
+
+# Database backend: postgres (recommended) or sqlite (testing only).
+SYNAPSE_DATABASE=postgres
+
+# PostgreSQL connection.  An empty SYNAPSE_PG_HOST means "unix socket on
+# this machine" (peer auth as the synapse OS user, no password).
+#
+# localhost / 127.0.0.1 / ::1 is treated as local TCP: a password is used
+# and synapse-setup will still create the role/database on the local cluster.
+#
+# Any other host (another machine, a container name, a podman/docker
+# network alias) is treated as remote: we only write the connection
+# settings, we never try to CREATE ROLE / CREATE DATABASE there.
+SYNAPSE_PG_HOST=
+SYNAPSE_PG_PORT=5432
+SYNAPSE_PG_USER=synapse
+SYNAPSE_PG_DATABASE=synapse
+# Leave empty for peer-auth on a local unix socket.  Required for TCP /
+# remote.  If empty on a local TCP setup, set one before the first start.
+SYNAPSE_PG_PASSWORD=
+
+# auto: create the local role/database when SYNAPSE_PG_HOST is local
+# yes:  always try (fails if the local cluster is not available)
+# no:   never touch the database server (you created it yourself)
+SYNAPSE_SETUP_LOCAL_DB=auto
+
 # Synapse's architecture is quite RAM hungry currently - we deliberately cache
 # a lot of recent room data and metadata in RAM in order to speed up common
 # requests. We'll improve this in future, but for now the easiest way to either

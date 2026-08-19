@@ -1,14 +1,24 @@
-# Configuration file for Synapse.
+# Example Synapse homeserver.yaml.
 #
-# This is a YAML file: see [1] for a quick introduction. Note in particular
-# that *indentation is important*: all the elements of a list or dictionary
-# should have the same indentation.
+# Do not copy this over /etc/synapse/homeserver.yaml unless you know what
+# you are doing.  The supported first-start path is:
 #
-# [1] https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
+#   1. Set SYNAPSE_SERVER_NAME (and optionally SYNAPSE_PG_*) in
+#      /etc/sysconfig/synapse
+#   2. If the database is local:  systemctl enable --now postgresql
+#   3. systemctl enable --now synapse
 #
-# For more information on how to configure Synapse, including a complete accounting of
-# each option, go to docs/usage/configuration/config_documentation.md or
-# https://matrix-org.github.io/synapse/latest/usage/configuration/config_documentation.html
+# /usr/libexec/synapse-setup then generates a full commented config with
+# fresh secrets, writes /etc/synapse/conf.d/database.yaml, and — only when
+# the configured Postgres is on this machine — CREATE ROLE / CREATE DATABASE.
+# A remote or containerised Postgres is left alone; create the role and
+# database there yourself (UTF8, locale C, owner = the synapse role).
+#
+# generate_config --server-name YOUR.DOMAIN --config-dir /etc/synapse \
+#   --data-dir /srv/synapse --report-stats=no --generate-secrets \
+#   -o /etc/synapse/homeserver.yaml
+# is the same generator the setup script uses.
+
 server_name: "matrix.example.org"
 pid_file: /run/synapse/homeserver.pid
 listeners:
@@ -16,34 +26,35 @@ listeners:
     tls: false
     type: http
     x_forwarded: true
+    bind_addresses: ['127.0.0.1']
     resources:
       - names: [client, federation]
         compress: false
 
-web_client_location: https://app.element.io/
-public_baseurl: https://matrix.example.org:8008/
-
 log_config: "/etc/synapse/log_config.yaml"
-registration_requires_token: true
 media_store_path: /srv/synapse/media_store
-registration_shared_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-report_stats: true
-macaroon_secret_key: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-form_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-signing_key_path: "/etc/synapse/matrix.signing.key"
-serve_server_wellknown: true
+report_stats: false
+signing_key_path: "/etc/synapse/matrix.example.org.signing.key"
 trusted_key_servers:
   - server_name: "matrix.org"
 
-
-# vim:ft=yaml
-database:
-    name: psycopg2
-    args:
-        user: matrix
-        password: xirtam
-        host: localhost
-        database: matrix
-        cp_min: 5
-        cp_max: 10
-
+# Local unix-socket Postgres (peer auth, no password) — the setup-script default:
+# database:
+#   name: psycopg2
+#   args:
+#     user: synapse
+#     dbname: synapse
+#     cp_min: 5
+#     cp_max: 10
+#
+# Remote / container Postgres — set SYNAPSE_PG_HOST and SYNAPSE_PG_PASSWORD
+# in /etc/sysconfig/synapse instead of editing this by hand:
+# database:
+#   name: psycopg2
+#   args:
+#     user: synapse
+#     password: "choose-a-real-secret"
+#     host: db.example.org
+#     dbname: synapse
+#     cp_min: 5
+#     cp_max: 10

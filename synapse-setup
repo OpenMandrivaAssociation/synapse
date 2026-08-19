@@ -1,0 +1,334 @@
+#!/bin/bash
+# First-start (and idempotent) setup for the Synapse Matrix homeserver.
+#
+# Synapse creates its own schema when it first connects to an empty database.
+# What this script does is the part the homeserver cannot do itself:
+#   - generate homeserver.yaml / secrets / signing keys on first start
+#   - if PostgreSQL is local, create the role and database
+#   - if PostgreSQL is remote (or in another container), leave the server
+#     alone and only write the connection settings
+#
+# Driven by /etc/sysconfig/synapse. Safe to re-run.
+
+set -euo pipefail
+
+SYSCONFIG=/etc/sysconfig/synapse
+CONFDIR=/etc/synapse
+CONFD=$CONFDIR/conf.d
+DATADIR=/srv/synapse
+HOMESERVER=$CONFDIR/homeserver.yaml
+DBCONF=$CONFD/database.yaml
+LOGCONF=$CONFDIR/log_config.yaml
+
+# Marker written into files this script owns, so we never clobber admin edits.
+MANAGED='# managed-by: synapse-setup'
+
+if [ -f "$SYSCONFIG" ]; then
+	# shellcheck disable=SC1090
+	. "$SYSCONFIG"
+fi
+
+SYNAPSE_SERVER_NAME=${SYNAPSE_SERVER_NAME:-}
+SYNAPSE_REPORT_STATS=${SYNAPSE_REPORT_STATS:-no}
+SYNAPSE_DATABASE=${SYNAPSE_DATABASE:-postgres}
+SYNAPSE_PG_HOST=${SYNAPSE_PG_HOST:-}
+SYNAPSE_PG_PORT=${SYNAPSE_PG_PORT:-5432}
+SYNAPSE_PG_USER=${SYNAPSE_PG_USER:-synapse}
+SYNAPSE_PG_DATABASE=${SYNAPSE_PG_DATABASE:-synapse}
+SYNAPSE_PG_PASSWORD=${SYNAPSE_PG_PASSWORD:-}
+SYNAPSE_SETUP_LOCAL_DB=${SYNAPSE_SETUP_LOCAL_DB:-auto}
+
+die() {
+	echo "synapse-setup: $*" >&2
+	exit 1
+}
+
+# Documentation placeholders (RFC 2606).  A homeserver named example.org
+# cannot federate and is almost never what the admin meant.
+reject_example_placeholders() {
+	local hits
+	if [ -f "$SYSCONFIG" ]; then
+		hits=$(grep -nEi '^[^#]*example\.(com|org|net)' "$SYSCONFIG" || true)
+		if [ -n "$hits" ]; then
+			echo "synapse-setup: =================================================================" >&2
+			echo "synapse-setup: REFUSING TO CONTINUE — placeholder domain in $SYSCONFIG" >&2
+			echo "synapse-setup: =================================================================" >&2
+			echo "$hits" | sed 's/^/synapse-setup:   /' >&2
+			echo "synapse-setup:" >&2
+			die "example.com / example.org / example.net are documentation placeholders.
+They are not a usable Matrix server name (federation will not work, and
+you cannot rename a homeserver later).
+
+Edit $SYSCONFIG:
+  SYNAPSE_SERVER_NAME=matrix.YOUR.REAL.DOMAIN
+
+then:  systemctl start synapse"
+		fi
+	fi
+}
+
+reject_example_placeholders
+
+valid_ident() {
+	case "$1" in
+	''|*[!A-Za-z0-9_]*|[0-9]*)
+		die "invalid SQL identifier '$1' (use letters, digits, underscore; start with a letter)"
+		;;
+	esac
+}
+
+valid_ident "$SYNAPSE_PG_USER"
+valid_ident "$SYNAPSE_PG_DATABASE"
+case "$SYNAPSE_PG_PORT" in
+''|*[!0-9]*) die "SYNAPSE_PG_PORT must be a number (got '$SYNAPSE_PG_PORT')" ;;
+esac
+
+umask 027
+
+is_local_pg() {
+	case "${SYNAPSE_PG_HOST}" in
+	''|localhost|127.0.0.1|::1|/run/postgresql|/var/run/postgresql)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+uses_unix_socket() {
+	case "${SYNAPSE_PG_HOST}" in
+	''|/run/postgresql|/var/run/postgresql)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+config_is_placeholder() {
+	[ ! -f "$HOMESERVER" ] && return 0
+	# The previously shipped sample used this dummy secret.
+	grep -q 'registration_shared_secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"' "$HOMESERVER" 2>/dev/null
+
+}
+
+file_is_ours() {
+	[ ! -e "$1" ] || grep -qF "$MANAGED" "$1"
+}
+
+generate_homeserver() {
+	if [ -z "$SYNAPSE_SERVER_NAME" ]; then
+		die "SYNAPSE_SERVER_NAME is not set in $SYSCONFIG.
+
+Synapse refuses to pick a server name for you: it is the public domain
+of this homeserver (the part after the colon in @user:example.org) and
+cannot be changed later.
+
+Edit $SYSCONFIG, then:  systemctl start synapse
+(or re-run $0)"
+	fi
+
+	case "$SYNAPSE_REPORT_STATS" in
+	yes|no) ;;
+	*) die "SYNAPSE_REPORT_STATS must be 'yes' or 'no' (got '$SYNAPSE_REPORT_STATS')" ;;
+	esac
+
+	echo "synapse-setup: generating $HOMESERVER for $SYNAPSE_SERVER_NAME"
+	tmp=$(mktemp "$CONFDIR/homeserver.yaml.XXXXXX")
+	# generate_config writes a fully commented template with fresh secrets.
+	generate_config \
+		--server-name "$SYNAPSE_SERVER_NAME" \
+		--config-dir "$CONFDIR" \
+		--data-dir "$DATADIR" \
+		--report-stats "$SYNAPSE_REPORT_STATS" \
+		--generate-secrets \
+		-o "$tmp"
+	{
+		echo "$MANAGED"
+		echo "# Generated on $(date -u +%Y-%m-%dT%H:%M:%SZ). Edit freely; this"
+		echo "# script will not overwrite the file once the marker above is gone."
+		echo
+		cat "$tmp"
+	} > "$HOMESERVER"
+	rm -f "$tmp"
+	chown synapse:synapse "$HOMESERVER"
+	chmod 0640 "$HOMESERVER"
+}
+
+write_database_yaml() {
+	file_is_ours "$DBCONF" || return 0
+
+	local tmp
+	tmp=$(mktemp "$CONFD/database.yaml.XXXXXX")
+	{
+		echo "$MANAGED"
+		echo "# Database settings derived from $SYSCONFIG."
+		echo "# Remove the marker on the first line to take over this file."
+		echo
+		if [ "$SYNAPSE_DATABASE" = sqlite ]; then
+			cat <<EOF
+database:
+  name: sqlite3
+  args:
+    database: $DATADIR/homeserver.db
+EOF
+		else
+			printf '%s\n' \
+				"database:" \
+				"  name: psycopg2" \
+				"  args:" \
+				"    user: $SYNAPSE_PG_USER" \
+				"    dbname: $SYNAPSE_PG_DATABASE"
+			if ! uses_unix_socket; then
+				printf '%s\n' \
+					"    host: $SYNAPSE_PG_HOST" \
+					"    port: $SYNAPSE_PG_PORT"
+			fi
+			if [ -n "$SYNAPSE_PG_PASSWORD" ]; then
+				# YAML single-quoted: double any embedded quotes.
+				pw=${SYNAPSE_PG_PASSWORD//\'/\'\'}
+				printf '%s\n' "    password: '$pw'"
+			fi
+			printf '%s\n' "    cp_min: 5" "    cp_max: 10"
+		fi
+	} > "$tmp"
+	chown synapse:synapse "$tmp"
+	chmod 0640 "$tmp"
+	mv "$tmp" "$DBCONF"
+
+	if [ "$SYNAPSE_DATABASE" = postgres ]; then
+		if uses_unix_socket && [ -z "$SYNAPSE_PG_PASSWORD" ] && [ "$SYNAPSE_PG_USER" != synapse ]; then
+			echo "synapse-setup: warning: unix-socket peer auth maps the OS user 'synapse' to a PostgreSQL role of the same name; SYNAPSE_PG_USER=$SYNAPSE_PG_USER will not match unless you add a password or an ident map" >&2
+		fi
+		if ! uses_unix_socket && [ -z "$SYNAPSE_PG_PASSWORD" ]; then
+			echo "synapse-setup: warning: TCP/remote Postgres usually needs SYNAPSE_PG_PASSWORD in $SYSCONFIG" >&2
+		fi
+	fi
+}
+
+ensure_local_postgres() {
+	local should=0
+	case "$SYNAPSE_SETUP_LOCAL_DB" in
+	yes) should=1 ;;
+	no) return 0 ;;
+	auto)
+		is_local_pg && should=1
+		;;
+	*) die "SYNAPSE_SETUP_LOCAL_DB must be auto, yes or no" ;;
+	esac
+	[ "$should" -eq 1 ] || return 0
+
+	if ! command -v psql >/dev/null 2>&1 || ! getent passwd postgres >/dev/null; then
+		die "PostgreSQL is configured as local (host='${SYNAPSE_PG_HOST:-unix socket}')
+but postgresql-server is not installed.
+
+Either:
+  1. dnf install postgresql-server && systemctl enable --now postgresql
+  2. Point SYNAPSE_PG_HOST at a remote/container Postgres in $SYSCONFIG
+  3. Set SYNAPSE_DATABASE=sqlite for a local test instance"
+	fi
+
+	# Do not `systemctl start postgresql` from ExecStartPre: that can
+	# deadlock the systemd transaction that is already activating us.
+	if ! systemctl is-active --quiet postgresql.service; then
+		die "PostgreSQL is configured as local (host='${SYNAPSE_PG_HOST:-unix socket}')
+but postgresql.service is not running.
+
+  systemctl enable --now postgresql
+
+then start synapse again.  If the database is on another host or in a
+container, set SYNAPSE_PG_HOST in $SYSCONFIG (and SYNAPSE_SETUP_LOCAL_DB=no
+if you also have a local cluster you do not want us to touch)."
+	fi
+
+	# Peer auth over the unix socket as the postgres superuser.
+	local role_exists db_exists
+	role_exists=$(runuser -u postgres -- psql -tAc \
+		"SELECT 1 FROM pg_roles WHERE rolname = '$SYNAPSE_PG_USER'")
+	if [ "$role_exists" != 1 ]; then
+		echo "synapse-setup: creating PostgreSQL role $SYNAPSE_PG_USER"
+		if [ -n "$SYNAPSE_PG_PASSWORD" ]; then
+			pw=${SYNAPSE_PG_PASSWORD//\'/\'\'}
+			runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c \
+				"CREATE ROLE $SYNAPSE_PG_USER LOGIN PASSWORD '$pw'"
+		else
+			runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c \
+				"CREATE ROLE $SYNAPSE_PG_USER LOGIN"
+		fi
+	elif [ -n "$SYNAPSE_PG_PASSWORD" ]; then
+		pw=${SYNAPSE_PG_PASSWORD//\'/\'\'}
+		runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c \
+			"ALTER ROLE $SYNAPSE_PG_USER LOGIN PASSWORD '$pw'"
+	fi
+
+	db_exists=$(runuser -u postgres -- psql -tAc \
+		"SELECT 1 FROM pg_database WHERE datname = '$SYNAPSE_PG_DATABASE'")
+	if [ "$db_exists" != 1 ]; then
+		echo "synapse-setup: creating PostgreSQL database $SYNAPSE_PG_DATABASE"
+		# UTF8 + C locale is required by Synapse (see docs/postgres.md).
+		runuser -u postgres -- createdb \
+			--encoding=UTF8 --locale=C --template=template0 \
+			--owner="$SYNAPSE_PG_USER" "$SYNAPSE_PG_DATABASE"
+	fi
+}
+
+generate_keys() {
+	# Signing keys etc.  Harmless if they already exist.
+	runuser -u synapse -- python -m synapse.app.homeserver \
+		--config-path="$HOMESERVER" \
+		--config-path="$CONFD/" \
+		--generate-keys
+	# generate-keys may write ${server_name}.signing.key
+	find "$CONFDIR" -maxdepth 1 -name '*.signing.key' -exec chmod 0600 {} +
+	find "$CONFDIR" -maxdepth 1 -name '*.signing.key' -exec chown synapse:synapse {} +
+}
+
+# --- main ----------------------------------------------------------------
+
+install -d -m 0750 -o synapse -g synapse "$CONFDIR" "$CONFD" "$DATADIR" "$DATADIR/media_store"
+
+if [ ! -f "$LOGCONF" ]; then
+	die "$LOGCONF is missing; reinstall the synapse package"
+fi
+
+# Only manage the database when we generated the config, or when a
+# previous run left a marked conf.d/database.yaml.  A hand-written
+# homeserver.yaml (including one pointing at a remote Postgres) is
+# left alone, so a missing local cluster does not block startup.
+MANAGE_DB=0
+if config_is_placeholder; then
+	generate_homeserver
+	MANAGE_DB=1
+elif [ -e "$DBCONF" ] && grep -qF "$MANAGED" "$DBCONF"; then
+	MANAGE_DB=1
+fi
+
+if [ ! -f "$HOMESERVER" ]; then
+	die "no $HOMESERVER and generation was skipped"
+fi
+
+if [ "$MANAGE_DB" -eq 1 ]; then
+	case "$SYNAPSE_DATABASE" in
+	postgres|postgresql|psycopg2)
+		SYNAPSE_DATABASE=postgres
+		write_database_yaml
+		ensure_local_postgres
+		;;
+	sqlite|sqlite3)
+		SYNAPSE_DATABASE=sqlite
+		write_database_yaml
+		;;
+	*)
+		die "SYNAPSE_DATABASE must be postgres or sqlite (got '$SYNAPSE_DATABASE')"
+		;;
+	esac
+elif [ "$SYNAPSE_SETUP_LOCAL_DB" = yes ]; then
+	ensure_local_postgres
+fi
+
+generate_keys
+
+echo "synapse-setup: ready"
+exit 0

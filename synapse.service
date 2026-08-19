@@ -1,17 +1,66 @@
 [Unit]
 Description=Synapse Matrix homeserver
-After=network-online.target postgresql.service
+Documentation=https://element-hq.github.io/synapse/latest/
+After=network-online.target
+# If a local postgresql.service exists we wait for it, but we do not pull it
+# in: a remote or containerised database is a supported layout.
+After=postgresql.service
 
 [Service]
 Type=notify
 NotifyAccess=main
 User=synapse
 Group=synapse
-WorkingDirectory=/var/lib/synapse
-ExecStart=/usr/bin/python3 -m synapse.app.homeserver --config-path=/etc/synapse/homeserver.yaml
+WorkingDirectory=/srv/synapse
+RuntimeDirectory=synapse
+RuntimeDirectoryMode=0750
+# Root: generate config and (when the DB is local) the Postgres role/database.
+# Sandbox options below do not apply to this line (`+` resets them).
+# See /usr/libexec/synapse-setup and /etc/sysconfig/synapse.
+ExecStartPre=+/usr/libexec/synapse-setup
+ExecStart=/usr/bin/python -m synapse.app.homeserver --config-path=/etc/synapse/homeserver.yaml --config-path=/etc/synapse/conf.d/
 ExecReload=/bin/kill -HUP $MAINPID
-EnvironmentFile=-/etc/sysconfig/synapse  # Can be used to e.g. set SYNAPSE_CACHE_FACTOR
+EnvironmentFile=-/etc/sysconfig/synapse
 SyslogIdentifier=synapse
+Restart=on-failure
+RestartSec=5
+
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+LockPersonality=true
+# Python (cffi/ctypes) and the rust extension need W+X mappings.
+MemoryDenyWriteExecute=false
+RestrictRealtime=true
+RestrictNamespaces=true
+
+# Filesystem
+ProtectHome=true
+ReadWritePaths=/srv/synapse
+# Local Postgres over its unix socket (optional: remote DB does not need this)
+ReadWritePaths=-/run/postgresql
+# Optional redis workers
+ReadWritePaths=-/run/redis -/run/valkey
+PrivateTmp=true
+PrivateDevices=true
+
+# Kernel/system protection
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# Privilege escalation
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+
+# Capabilities — default listener is 8008, no bind-below-1024.
+# Add CAP_NET_BIND_SERVICE in a drop-in if you listen on 80/443.
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 [Install]
 WantedBy=multi-user.target
