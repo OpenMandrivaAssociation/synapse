@@ -1,3 +1,3 @@
 sources:
-  synapse-1.159.0.tar.gz: b6e805d167739d750af03afe05ba2064164f9fa2
-  rust-vendor.tar.xz: f6841fb23c8e88c2b4679e44d21b737fb5be8717
+  synapse-1.161.0.tar.gz: 251cf1cf43ce352fbf6073800a7affbc66071ed6
+  rust-vendor.tar.xz: 0f436bfeed154adfaccfbf6be239c12369a85694

@@ -7,7 +7,7 @@
 #   abb store synapse-VERSION.tar.gz rust-vendor.tar.xz
 
 Name:		synapse
-Version:	1.159.0
+Version:	1.161.0
 Release:	1
 Source0:	https://github.com/element-hq/synapse/archive/v%{version}/synapse-%{version}.tar.gz
 Source1:	rust-vendor.tar.xz
