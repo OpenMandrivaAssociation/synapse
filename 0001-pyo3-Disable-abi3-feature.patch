@@ -2,17 +2,12 @@ From: OpenMandriva
 Subject: [PATCH] pyo3: Disable abi3 feature
 
 OpenMandriva does not require compatibility with Python versions
-different to the one at compile time.
+different to the one at compile time. PyO3 abi3-py310 cannot load
+into Python 3.15.
 
 ---
- build_rust.py   | 22 ++--------------------
- rust/Cargo.toml |  2 --
- 2 files changed, 2 insertions(+), 22 deletions(-)
-
-diff --git a/build_rust.py b/build_rust.py
-index a9e9265daf..65d9ac301d 100644
---- a/build_rust.py
-+++ b/build_rust.py
+--- a/build_rust.py	2026-10-14 16:22:00.000000000 +0200
++++ b/build_rust.py	2026-10-16 19:16:32.410643476 +0200
 @@ -1,10 +1,8 @@
  # A build script for poetry that adds the rust extension.
  
@@ -24,7 +19,7 @@ index a9e9265daf..65d9ac301d 100644
  from setuptools_rust import Binding, RustExtension
  
  
-@@ -16,27 +14,11 @@ def build(setup_kwargs: dict[str, Any]) -> None:
+@@ -16,27 +14,11 @@
          target="synapse.synapse_rust",
          path=cargo_toml_path,
          binding=Binding.PyO3,
@@ -54,11 +49,9 @@ index a9e9265daf..65d9ac301d 100644
 -    setup_kwargs.setdefault("options", {}).setdefault("bdist_wheel", {})[
 -        "py_limited_api"
 -    ] = py_limited_api
-diff --git a/rust/Cargo.toml b/rust/Cargo.toml
-index e8321d159b..eeeb512920 100644
---- a/rust/Cargo.toml
-+++ b/rust/Cargo.toml
-@@ -34,8 +34,6 @@ mime = "0.3.17"
+--- a/rust/Cargo.toml	2026-10-14 16:22:00.000000000 +0200
++++ b/rust/Cargo.toml	2026-10-16 19:16:32.410707497 +0200
+@@ -35,8 +35,6 @@
  pyo3 = { version = "0.29.0", features = [
      "macros",
      "anyhow",
@@ -67,6 +60,3 @@ index e8321d159b..eeeb512920 100644
      # So we can pass `bytes::Bytes` directly back to Python efficiently,
      # https://docs.rs/pyo3/latest/pyo3/bytes/index.html
      "bytes",
- ] }
--- 
-2.51.1
