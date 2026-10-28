@@ -1,3 +1,3 @@
 sources:
-  rust-vendor.tar.xz: 10c42ec23899c6ce3a77a02eb74a760aa345b1cd
-  synapse-1.163.2.tar.gz: 4e5ce3794fdbcfc374699674918b7efc6567fcac
+  synapse-1.164.0.tar.gz: 9df5dd081b50da33ef4e37eaaa0f2ea9f9d844ba
+  rust-vendor.tar.xz: 567ea3d6e6a62108af3e895fc479339975059924
